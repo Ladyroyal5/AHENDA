@@ -1,26 +1,20 @@
-
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, URL, make_url
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-# Load local environment variables (for local development)
+# Load local .env for development
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(ENV_PATH)
 
-# Prefer cloud DATABASE_URL when deployed
-CLOUD_DATABASE_URL = os.getenv("DATABASE_URL")
+# Cloud database URL (EthioDeploy) or local configuration
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-if CLOUD_DATABASE_URL:
-    DATABASE_URL = make_url(CLOUD_DATABASE_URL)
+if not DATABASE_URL:
+    from sqlalchemy import URL
 
-    # Ensure the MySQL URL uses PyMySQL
-    if DATABASE_URL.drivername in ("mysql", "mysql+pymysql"):
-        DATABASE_URL = DATABASE_URL.set(drivername="mysql+pymysql")
-else:
-    # Local database configuration
     DB_USER = os.getenv("DATABASE_USER")
     DB_PASSWORD = os.getenv("DATABASE_PASSWORD")
     DB_HOST = os.getenv("DATABASE_HOST", "localhost")
@@ -28,7 +22,7 @@ else:
     DB_NAME = os.getenv("DATABASE_NAME", "ahenda_db")
 
     if not DB_USER or DB_PASSWORD is None:
-        raise RuntimeError("Database credentials are missing")
+        raise RuntimeError("Database credentials are missing from .env")
 
     DATABASE_URL = URL.create(
         drivername="mysql+pymysql",
@@ -37,28 +31,31 @@ else:
         host=DB_HOST,
         port=DB_PORT,
         database=DB_NAME,
-        query={"charset": "utf8mb4"}
+        query={"charset": "utf8mb4"},
     )
+else:
+    # EthioDeploy MySQL URL uses mysql://; SQLAlchemy needs mysql+pymysql://
+    if DATABASE_URL.startswith("mysql://"):
+        DATABASE_URL = DATABASE_URL.replace(
+            "mysql://", "mysql+pymysql://", 1
+        )
 
-# Create database engine
+# Database engine
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    pool_recycle=3600
+    pool_recycle=3600,
 )
 
-# Create database sessions
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
 
-# Base class for database models
 class Base(DeclarativeBase):
     pass
 
-# Database session dependency
 def get_db():
     db = SessionLocal()
     try:
