@@ -3,33 +3,42 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, URL
+from sqlalchemy import create_engine, URL, make_url
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-# Load environment variables from backend/.env
+# Load local environment variables (for local development)
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(ENV_PATH)
 
-# Database configuration
-DB_USER = os.getenv("DATABASE_USER")
-DB_PASSWORD = os.getenv("DATABASE_PASSWORD")
-DB_HOST = os.getenv("DATABASE_HOST", "localhost")
-DB_PORT = int(os.getenv("DATABASE_PORT", "3306"))
-DB_NAME = os.getenv("DATABASE_NAME", "ahenda_db")
+# Prefer cloud DATABASE_URL when deployed
+CLOUD_DATABASE_URL = os.getenv("DATABASE_URL")
 
-if not DB_USER or DB_PASSWORD is None:
-    raise RuntimeError("Database credentials are missing from .env")
+if CLOUD_DATABASE_URL:
+    DATABASE_URL = make_url(CLOUD_DATABASE_URL)
 
-# Build a safe database URL
-DATABASE_URL = URL.create(
-    drivername="mysql+pymysql",
-    username=DB_USER,
-    password=DB_PASSWORD,
-    host=DB_HOST,
-    port=DB_PORT,
-    database=DB_NAME,
-    query={"charset": "utf8mb4"}
-)
+    # Ensure the MySQL URL uses PyMySQL
+    if DATABASE_URL.drivername in ("mysql", "mysql+pymysql"):
+        DATABASE_URL = DATABASE_URL.set(drivername="mysql+pymysql")
+else:
+    # Local database configuration
+    DB_USER = os.getenv("DATABASE_USER")
+    DB_PASSWORD = os.getenv("DATABASE_PASSWORD")
+    DB_HOST = os.getenv("DATABASE_HOST", "localhost")
+    DB_PORT = int(os.getenv("DATABASE_PORT", "3306"))
+    DB_NAME = os.getenv("DATABASE_NAME", "ahenda_db")
+
+    if not DB_USER or DB_PASSWORD is None:
+        raise RuntimeError("Database credentials are missing")
+
+    DATABASE_URL = URL.create(
+        drivername="mysql+pymysql",
+        username=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        query={"charset": "utf8mb4"}
+    )
 
 # Create database engine
 engine = create_engine(
@@ -48,7 +57,6 @@ SessionLocal = sessionmaker(
 # Base class for database models
 class Base(DeclarativeBase):
     pass
-
 
 # Database session dependency
 def get_db():
