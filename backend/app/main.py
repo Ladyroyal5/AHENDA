@@ -16,6 +16,8 @@ from app.api import clinical_outcomes
 from app.api import risk_assessments
 from app.api import interventions
 from app.api import communication
+from app.database.connection import Base, engine
+import app.models
 
 # 1. Create the FastAPI application FIRST
 app = FastAPI(
@@ -35,7 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+@app.on_event("startup")
+def create_database_tables():
+    Base.metadata.create_all(bind=engine)
 
 # 2. Register the patient routes AFTER creating app
 # 2. Register API routes
